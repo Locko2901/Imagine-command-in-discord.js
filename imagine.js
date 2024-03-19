@@ -1,7 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const OpenAI = require('openai');
 
-// Command: /imagine [prompt]
 const imagineCommand = new SlashCommandBuilder()
   .setName('imagine')
   .setDescription('Generate an image based on imaginations.')
@@ -16,23 +15,26 @@ const openai = new OpenAI({ apiKey: 'YOUR_API_KEY' });
 async function handleImagineCommand(interaction) {
     try {
         const prompt = interaction.options.getString('prompt');
-
         await interaction.deferReply();
-
         const image = await openai.images.generate({
             model: 'dall-e-3',
             prompt: prompt
         });
 
-        console.log('OpenAI Image Response:', image);
+        if (!image.data || image.data.length === 0) {
+            throw new Error('Empty response from OpenAI.');
+        }
 
-        const imageUrl = image.data[0].url; 
-
+        const { url: imageUrl, revised_prompt: revisedPrompt } = image.data[0];
         await interaction.followUp({ files: [{ attachment: imageUrl, name: 'image.png' }] });
-
-    } catch (error) {
+        await interaction.followUp({ ephemeral: true, content: `Prompt used: ${revisedPrompt}` });
+      } catch (error) {
         console.error(error);
-        await interaction.reply(`An error occurred: ${error.message}`);
+        if (error.status === 400 && error.error && error.error.code === 'content_policy_violation') {
+            await interaction.followUp({ ephemeral: true, content: 'Sorry, the prompt was filtered by the safety system. Please try a different prompt.' });
+        } else {
+            await interaction.followUp({ ephemeral: true, content: 'Sorry, an error occurred while generating the image.' });
+        }
     }
 }
 
